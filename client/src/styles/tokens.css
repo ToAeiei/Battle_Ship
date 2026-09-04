@@ -1,0 +1,84 @@
+/* =============================================================================
+   DESIGN TOKENS — change the whole look of the game from this one file.
+   Every component references var(--...) and never a raw colour.
+   ========================================================================== */
+
+:root {
+  /* --- brand ------------------------------------------------------------ */
+  --radar:        #35e0c8;   /* primary accent: radar green-cyan */
+  --radar-soft:   #35e0c826;
+  --hit:          #ff4d6d;   /* a shot that connected */
+  --miss:         #6f8bb0;   /* splash */
+  --sunk:         #ff8c42;   /* destroyed hull */
+  --gold:         #ffd166;   /* victory / score */
+
+  /* --- surfaces (dark, the default) ------------------------------------- */
+  --bg:           #070d16;
+  --bg-deep:      #050910;
+  --surface:      #0e1826;
+  --surface-2:    #142234;
+  --surface-3:    #1b2c42;
+  --line:         #23364e;
+  --line-soft:    #1a2942;
+
+  /* --- text ------------------------------------------------------------- */
+  --text:         #e8f0fb;
+  --text-dim:     #93a7c2;
+  --text-faint:   #5f7391;
+
+  /* --- geometry --------------------------------------------------------- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --gap: 16px;
+
+  /* --- depth ------------------------------------------------------------ */
+  --shadow-1: 0 1px 2px #0006, 0 4px 16px #0004;
+  --shadow-2: 0 8px 40px #0008, 0 2px 8px #0006;
+  --glow-radar: 0 0 0 1px #35e0c855, 0 0 24px #35e0c833;
+
+  /* --- type ------------------------------------------------------------- */
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* --- motion ----------------------------------------------------------- */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --fast: 140ms var(--ease);
+  --slow: 420ms var(--ease);
+
+  /* --- board ------------------------------------------------------------ */
+  --cell: clamp(30px, 8.2vw, 54px);
+  --cell-sm: clamp(20px, 5vw, 34px);
+  --water: #0d2137;
+  --water-2: #10293f;
+}
+
+/* Light theme — same tokens, daylight values. */
+:root[data-theme='light'] {
+  --bg:         #eef3fa;
+  --bg-deep:    #e3ebf6;
+  --surface:    #ffffff;
+  --surface-2:  #f4f7fc;
+  --surface-3:  #e8eff8;
+  --line:       #cfdcec;
+  --line-soft:  #e0e9f4;
+  --text:       #10203a;
+  --text-dim:   #4a6180;
+  --text-faint: #7d92ae;
+  --radar:      #0f9e8c;
+  --radar-soft: #0f9e8c1f;
+  --miss:       #7f97b4;
+  --water:      #d8e6f4;
+  --water-2:    #cddff1;
+  --shadow-1: 0 1px 2px #1a2c4514, 0 4px 14px #1a2c450f;
+  --shadow-2: 0 12px 40px #1a2c4522;
+  --glow-radar: 0 0 0 1px #0f9e8c44, 0 0 20px #0f9e8c22;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
