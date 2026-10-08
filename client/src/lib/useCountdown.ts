@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { serverTime } from './clock.js';
 
 /**
  * Counts down to a server-supplied epoch timestamp.
@@ -24,4 +25,4 @@ export function useCountdown(endsAt: number | null, onTick?: (secondsLeft: numbe
 }
 
 const remaining = (endsAt: number | null) =>
-  endsAt === null ? 0 : Math.max(0, (endsAt - Date.now()) / 1000);
+  endsAt === null ? 0 : Math.max(0, (endsAt - serverTime()) / 1000);

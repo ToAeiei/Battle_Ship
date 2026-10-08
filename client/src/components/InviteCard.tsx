@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGame } from '../net/store.js';
 import { initials } from '../lib/ui.js';
+import { serverTime } from '../lib/clock.js';
 
 /** Incoming challenge, with a live expiry countdown. */
 export function InviteCard() {
@@ -9,7 +10,7 @@ export function InviteCard() {
 
   useEffect(() => {
     if (!invite) return;
-    const tick = () => setLeft(Math.max(0, Math.ceil((invite.expiresAt - Date.now()) / 1000)));
+    const tick = () => setLeft(Math.max(0, Math.ceil((invite.expiresAt - serverTime()) / 1000)));
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
@@ -19,7 +20,7 @@ export function InviteCard() {
   // rendered countdown instead would fire on the first render, when it is
   // still at its initial 0.)
   useEffect(() => {
-    if (invite && Date.now() >= invite.expiresAt) respond(invite.fromId, false);
+    if (invite && serverTime() >= invite.expiresAt) respond(invite.fromId, false);
   }, [left, invite, respond]);
 
   if (!invite) return null;

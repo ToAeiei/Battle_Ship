@@ -1,4 +1,5 @@
 import type { PlayerStatus } from '@battleship/shared';
+import { serverTime } from './clock.js';
 
 export const initials = (name: string) =>
   name
@@ -18,7 +19,7 @@ export const STATUS_TEXT: Record<PlayerStatus, string> = {
 };
 
 export const timeAgo = (ts: number) => {
-  const s = Math.floor((Date.now() - ts) / 1000);
+  const s = Math.max(0, Math.floor((serverTime() - ts) / 1000));
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;

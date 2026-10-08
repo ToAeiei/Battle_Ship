@@ -33,8 +33,10 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
   pingTimeout: 20_000,
 });
 
+// A cloud host assigns the port through PORT; locally it is the one in config.ts.
+const port = Number(process.env.PORT) || NETWORK.PORT;
 const addresses = localAddresses();
-const game = new GameServer(io, addresses);
+const game = new GameServer(io, addresses, port);
 registerHandlers(io, game);
 
 // --- serve the built game client -------------------------------------------
@@ -52,8 +54,8 @@ if (existsSync(clientDist)) {
   );
 }
 
-http.listen(NETWORK.PORT, '0.0.0.0', () => {
-  attachConsole(game, addresses);
+http.listen(port, '0.0.0.0', () => {
+  attachConsole(game, addresses, port);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {

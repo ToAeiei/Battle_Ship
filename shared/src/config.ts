@@ -57,8 +57,6 @@ export const FEATURES = {
   SPECTATORS_ENABLED: true,
   /** Let spectators see both fleets before the match ends? Off = anti-cheat. */
   SPECTATOR_SEES_SHIPS: false,
-  /** Leave '' for no password on the server dashboard (easiest for a demo). */
-  ADMIN_KEY: '',
 } as const;
 
 export type BotDifficulty = 'easy' | 'normal' | 'admiral';

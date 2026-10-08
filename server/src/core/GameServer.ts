@@ -36,33 +36,50 @@ export class GameServer {
   /** Called whenever the console display should be refreshed. */
   onConsoleRefresh: (() => void) | null = null;
 
-  constructor(private io: IO, private localAddresses: string[]) {}
+  /**
+   * Dashboard password. Server-only on purpose: anything in shared/ is bundled
+   * into the client. Leave ADMIN_KEY unset for an open dashboard (local demo).
+   */
+  private adminKey = process.env.ADMIN_KEY ?? '';
+
+  constructor(
+    private io: IO,
+    private localAddresses: string[],
+    private port: number = NETWORK.PORT
+  ) {}
 
   /* =============================================================== */
   /* sessions                                                        */
   /* =============================================================== */
 
-  joinSession(socket: Sock, nickname: string, token?: string): Player {
-    const clean = sanitiseNickname(nickname);
-    let player: Player | undefined;
+  joinSession(socket: Sock, nickname: unknown, token?: string): Player {
+    // A socket that already joined keeps its seat rather than minting a second player.
+    let player: Player | undefined = this.playerBySocket(socket.id) ?? undefined;
 
     // Reconnect: same token = same seat, same score, same match.
-    if (token) {
+    if (!player && token) {
       const id = this.byToken.get(token);
       if (id) player = this.players.get(id);
     }
 
     if (player) {
       if (player.dropTimer) { clearTimeout(player.dropTimer); player.dropTimer = null; }
-      player.nickname = clean || player.nickname;
+      // Seat claimed from another tab (a duplicated tab copies the token): the
+      // newest socket wins, and the old one must not drop the player on its way out.
+      if (player.socketId && player.socketId !== socket.id) {
+        const old = player.socketId;
+        this.bySocket.delete(old);
+        this.io.sockets.sockets.get(old)?.disconnect(true);
+      }
+      player.nickname = cleanNickname(nickname) || player.nickname;
       player.socketId = socket.id;
       player.address = addressOf(socket);
       if (player.status === 'away') player.status = player.roomId ? 'playing' : 'idle';
     } else {
       player = makePlayer({
         id: uid('p-'),
-        nickname: clean,
-        token: token || uid('t-'),
+        nickname: sanitiseNickname(nickname),
+        token: uid('t-'),
         socketId: socket.id,
         address: addressOf(socket),
       });
@@ -88,7 +105,8 @@ export class GameServer {
     this.adminSockets.delete(socketId);
     const player = this.playerBySocket(socketId);
     this.bySocket.delete(socketId);
-    if (!player) return;
+    // Only the player's current socket may take them offline.
+    if (!player || player.socketId !== socketId) return;
 
     player.socketId = null;
     player.status = 'away';
@@ -285,7 +303,7 @@ export class GameServer {
     if (!FEATURES.CHAT_ENABLED) return err('Chat is disabled.');
     const room = this.roomOf(player.id);
     if (!room) return err('You are not in a match.');
-    const clean = text.slice(0, 200).trim();
+    const clean = (typeof text === 'string' ? text : '').slice(0, 200).trim();
     if (!clean) return err('Say something first.');
     this.emitChat(room, {
       id: uid('m-'),
@@ -329,11 +347,14 @@ export class GameServer {
   /* =============================================================== */
 
   watchAdmin(socket: Sock, key: string) {
-    if (FEATURES.ADMIN_KEY && key !== FEATURES.ADMIN_KEY) return err('Wrong dashboard key.');
+    if (this.adminKey && key !== this.adminKey) return err('Wrong dashboard key.');
     this.adminSockets.add(socket.id);
     socket.emit('admin:state', this.adminState());
     return okv();
   }
+
+  /** Has this socket unlocked the dashboard? Gates reset and kick. */
+  isAdmin(socketId: string) { return this.adminSockets.has(socketId); }
 
   /** The assignment's server RESET button: wipe every match and every score. */
   reset() {
@@ -419,7 +440,12 @@ export class GameServer {
         losses: p.losses,
       }));
 
-    return { online: players.filter((p) => p.status !== 'away').length, players, rooms: this.roomSummaries() };
+    return {
+      online: players.filter((p) => p.status !== 'away').length,
+      players,
+      rooms: this.roomSummaries(),
+      serverNow: Date.now(),
+    };
   }
 
   private roomSummaries(): LobbyRoomSummary[] {
@@ -470,7 +496,8 @@ export class GameServer {
       })),
       serverStartedAt: this.startedAt,
       matchesPlayed: this.matchesPlayed,
-      host: { port: NETWORK.PORT, addresses: this.localAddresses },
+      host: { port: this.port, addresses: this.localAddresses },
+      serverNow: Date.now(),
     };
   }
 }
@@ -482,11 +509,15 @@ const okv = () => ({ ok: true as const });
 
 const addressOf = (socket: Sock) => {
   const fwd = socket.handshake.headers['x-forwarded-for'];
-  const raw = (Array.isArray(fwd) ? fwd[0] : fwd) || socket.handshake.address || '';
+  // Behind a proxy the header is "client, proxy1, proxy2" — the client is first.
+  const first = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0].trim();
+  const raw = first || socket.handshake.address || '';
   return raw.replace('::ffff:', '') || 'unknown';
 };
 
-export const sanitiseNickname = (raw: string) => {
-  const clean = (raw ?? '').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 16);
-  return clean || `Sailor${Math.floor(Math.random() * 900 + 100)}`;
-};
+/** '' when nothing usable was typed. */
+const cleanNickname = (raw: unknown) =>
+  (typeof raw === 'string' ? raw : '').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 16);
+
+export const sanitiseNickname = (raw: unknown) =>
+  cleanNickname(raw) || `Sailor${Math.floor(Math.random() * 900 + 100)}`;

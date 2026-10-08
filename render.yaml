@@ -1,0 +1,18 @@
+# Render blueprint: one web service that serves the game client and the sockets.
+# All game state lives in memory, so this must stay a single instance.
+services:
+  - type: web
+    name: battleship
+    runtime: node
+    plan: free
+    numInstances: 1
+    # The client build needs vite/typescript, which are devDependencies.
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Password for /admin (reset + kick). Set the value in the Render dashboard.
+      - key: ADMIN_KEY
+        sync: false

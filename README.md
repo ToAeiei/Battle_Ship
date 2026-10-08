@@ -44,6 +44,33 @@ The terminal prints something like:
 Stop with `Ctrl+C`. To develop with hot reload instead: `npm run dev`
 (client on `:5173`, server on `:3000`, sockets proxied automatically).
 
+### Run it in the cloud
+
+The same code runs on a cloud host, so players anywhere open one public URL.
+[`render.yaml`](render.yaml) is a ready-made blueprint for [Render](https://render.com):
+
+1. Push this repo to GitHub.
+2. In Render: **New → Blueprint**, pick the repo. It reads `render.yaml`.
+3. When asked, set **`ADMIN_KEY`** to a password of your choice — it protects `/admin`.
+4. Open the URL Render gives you (`https://<name>.onrender.com`); the dashboard is at `/admin`.
+
+Any Node host works with the same settings:
+
+| Setting | Value |
+|---|---|
+| Build command | `npm install --include=dev && npm run build` |
+| Start command | `npm run start` |
+| Health check | `/api/health` |
+| Environment | `ADMIN_KEY` = dashboard password · `PORT` is read automatically |
+| Instances | exactly **1** (all game state is in memory) |
+
+> Free tiers usually sleep when idle — open the URL a few minutes before a demo.
+>
+> **Demo note.** The assignment asks for one computer running *the server program and a
+> client*, and another running *only a client*. A cloud-only demo does not show that, so
+> keep `npm run play` ready on a laptop as well (it is unchanged), or ask which setup is
+> expected.
+
 ---
 
 ## 2. How to play
@@ -88,13 +115,13 @@ client/src/
 
 | I want to… | Change |
 |---|---|
-| Use a different port | `NETWORK.PORT` in `shared/src/config.ts` |
+| Use a different port | `NETWORK.PORT` in `shared/src/config.ts`, or the `PORT` environment variable |
 | Give players 15s a turn | `TIMING.TURN_SECONDS` |
 | Lose the turn instead of auto-firing on timeout | `TIMING.ON_TIMEOUT: 'pass-turn'` |
 | Use a 10×10 grid, or 5 ships of length 3 | `BOARD.SIZE`, `SHIP_COUNT`, `SHIP_LENGTH` |
 | Forbid ships touching each other | `BOARD.ALLOW_ADJACENT_SHIPS: false` |
 | Change hint count / disable chat | `FEATURES` |
-| Password-protect the dashboard | `FEATURES.ADMIN_KEY: 'yourkey'` |
+| Password-protect the dashboard | Start the server with the `ADMIN_KEY` environment variable set (PowerShell: `$env:ADMIN_KEY='yourkey'; npm run play`). Unset = open. |
 | Recolour everything | `client/src/styles/tokens.css` |
 
 Run `npm run typecheck` after edits — the shared types catch most mistakes instantly.
@@ -146,5 +173,7 @@ Run `npm run typecheck` after edits — the shared types catch most mistakes ins
 | Computer B can't open the page | Same network? Use the address the terminal printed, not `localhost`. Allow Node through the firewall (macOS: System Settings → Network → Firewall). |
 | "Client not built" page | Run `npm run build` (or just `npm run play`). |
 | Port 3000 already used | Change `NETWORK.PORT` in `shared/src/config.ts`. |
+| "Unlock the server dashboard first" | Reset and Kick only work from a dashboard that entered the right `ADMIN_KEY`. |
+| A tab suddenly shows "offline" | The same player was opened in a second (duplicated) tab; the newest tab keeps the seat. |
 | Two players on one computer | Open two **separate tabs** — each tab is its own player. |
 | Everything stuck | `/admin` → Reset games & scores. |

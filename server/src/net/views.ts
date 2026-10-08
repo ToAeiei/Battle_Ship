@@ -57,5 +57,6 @@ export function buildRoomView(room: Room, viewerId: string): RoomView {
     placementEndsAt: room.placementEndsAt,
     round: room.round,
     moveLog: room.moveLog.slice(-40),
+    serverNow: Date.now(),
   };
 }

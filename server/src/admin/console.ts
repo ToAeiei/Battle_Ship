@@ -20,22 +20,37 @@ const STATUS_COLOR: Record<string, string> = {
 
 const pad = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s.padEnd(n));
 
-export function attachConsole(game: GameServer, addresses: string[]) {
+export function attachConsole(game: GameServer, addresses: string[], port: number = NETWORK.PORT) {
   let scheduled = false;
+  // A cloud host captures stdout as a log file: repainting the screen would be
+  // unreadable there, so print one plain line whenever the client list changes.
+  const tty = process.stdout.isTTY;
+  let lastLine = '';
 
   const render = () => {
     scheduled = false;
     const s = game.adminState();
+
+    if (!tty) {
+      const online = s.clients.filter((c) => c.status !== 'away');
+      const line =
+        `clients online: ${s.onlineCount}` +
+        (online.length ? ` [${online.map((c) => `${c.nickname} (${c.status})`).join(', ')}]` : '') +
+        ` | matches: ${s.rooms.length}`;
+      if (line !== lastLine) { lastLine = line; console.log(line); }
+      return;
+    }
+
     const lines: string[] = [];
 
     lines.push('');
     lines.push(`${C.bold}${C.cyan}  ⚓  BATTLESHIP SERVER${C.reset}`);
     lines.push(`${C.gray}  ${'─'.repeat(74)}${C.reset}`);
-    lines.push(`  Listening on ${C.bold}:${NETWORK.PORT}${C.reset}`);
+    lines.push(`  Listening on ${C.bold}:${port}${C.reset}`);
     for (const a of addresses) {
-      lines.push(`    ${C.green}http://${a}:${NETWORK.PORT}${C.reset}   ${C.dim}game client${C.reset}`);
+      lines.push(`    ${C.green}http://${a}:${port}${C.reset}   ${C.dim}game client${C.reset}`);
     }
-    lines.push(`    ${C.yellow}http://localhost:${NETWORK.PORT}/admin${C.reset}   ${C.dim}server dashboard + reset${C.reset}`);
+    lines.push(`    ${C.yellow}http://localhost:${port}/admin${C.reset}   ${C.dim}server dashboard + reset${C.reset}`);
     lines.push('');
     lines.push(`  ${C.bold}CLIENTS ONLINE: ${C.green}${s.onlineCount}${C.reset}   ${C.dim}(registered: ${s.clients.length} · matches played: ${s.matchesPlayed})${C.reset}`);
     lines.push(`${C.gray}  ${'─'.repeat(74)}${C.reset}`);
@@ -72,6 +87,7 @@ export function attachConsole(game: GameServer, addresses: string[]) {
     setTimeout(render, 60); // coalesce bursts of updates
   };
 
+  if (!tty) console.log(`Battleship server listening on :${port}`);
   render();
   return render;
 }

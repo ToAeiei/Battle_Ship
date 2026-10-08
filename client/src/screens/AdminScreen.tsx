@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { FEATURES } from '@battleship/shared';
+import { useEffect, useRef, useState } from 'react';
 import type { AdminState } from '@battleship/shared';
 import { socket } from '../net/socket.js';
+import { syncClock } from '../lib/clock.js';
 import { STATUS_TEXT, cx, initials, timeAgo } from '../lib/ui.js';
 
 /**
@@ -16,26 +16,37 @@ import { STATUS_TEXT, cx, initials, timeAgo } from '../lib/ui.js';
  */
 export function AdminScreen() {
   const [state, setState] = useState<AdminState | null>(null);
-  const [authed, setAuthed] = useState(!FEATURES.ADMIN_KEY);
+  // null = still asking the server whether a key is needed.
+  const [authed, setAuthed] = useState<boolean | null>(null);
   const [key, setKey] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState('');
+  /** The key that last worked, so a dropped connection can unlock itself again. */
+  const goodKey = useRef('');
 
-  const watch = (k: string) =>
+  /** `silent` = an automatic attempt, so a refusal just shows the key form. */
+  const watch = (k: string, silent = false) =>
     socket.emit('admin:watch', { key: k }, (r) => {
-      if (r.ok) { setAuthed(true); setError(''); }
-      else setError(r.error);
+      if (r.ok) { goodKey.current = k; setAuthed(true); setError(''); }
+      else { setAuthed(false); setError(silent ? '' : r.error); }
     });
 
+  const act = (r: { ok: true } | { ok: false; error: string }) => {
+    if (!r.ok) setError(r.error);
+  };
+
   useEffect(() => {
-    const onState = (s: AdminState) => setState(s);
+    const onState = (s: AdminState) => { syncClock(s.serverNow); setState(s); };
     socket.on('admin:state', onState);
-    const onConnect = () => watch(FEATURES.ADMIN_KEY ? key : '');
+    // The server knows whether a key is set; an empty one works when it is not.
+    const onConnect = () => watch(goodKey.current, true);
     socket.on('connect', onConnect);
     if (socket.connected) onConnect();
     return () => { socket.off('admin:state', onState); socket.off('connect', onConnect); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (authed === null) return null;
 
   if (!authed) {
     return (
@@ -46,7 +57,7 @@ export function AdminScreen() {
         >
           <p className="eyebrow">Restricted</p>
           <h1 style={{ fontSize: 26, marginBottom: 14 }}>Server dashboard</h1>
-          <input className="input" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Dashboard key" />
+          <input className="input" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Dashboard key" autoFocus />
           {error && <p style={{ color: 'var(--hit)', fontSize: 13, marginTop: 8 }}>{error}</p>}
           <button className="btn btn--primary btn--block" style={{ marginTop: 14 }}>Unlock</button>
         </form>
@@ -55,6 +66,12 @@ export function AdminScreen() {
   }
 
   const s = state;
+  // On a LAN the server's own addresses are how others reach it; on a cloud host
+  // those are container-internal, and the public URL is the one in the address bar.
+  const local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(window.location.hostname);
+  const joinUrls = local
+    ? (s?.host.addresses ?? []).map((a) => `http://${a}:${s?.host.port}`)
+    : [window.location.origin];
 
   return (
     <div className="admin">
@@ -68,9 +85,12 @@ export function AdminScreen() {
             </div>
           </div>
         </div>
-        <button className="btn btn--danger" onClick={() => setConfirming(true)}>
-          ⟳ Reset games &amp; scores
-        </button>
+        <div className="row">
+          {error && <span style={{ color: 'var(--hit)', fontSize: 13 }}>{error}</span>}
+          <button className="btn btn--danger" onClick={() => setConfirming(true)}>
+            ⟳ Reset games &amp; scores
+          </button>
+        </div>
       </header>
 
       <div className="page stack">
@@ -91,8 +111,8 @@ export function AdminScreen() {
           <div className="card stat stat--wide">
             <p className="eyebrow">Join from any device</p>
             <div className="addrs" style={{ marginTop: 8 }}>
-              {(s?.host.addresses ?? []).map((a) => (
-                <span className="addr" key={a}>http://{a}:{s?.host.port}</span>
+              {joinUrls.map((u) => (
+                <span className="addr" key={u}>{u}</span>
               ))}
             </div>
           </div>
@@ -135,7 +155,7 @@ export function AdminScreen() {
                     <td className="mono faint">{c.wins}/{c.losses}</td>
                     <td className="faint">{timeAgo(c.connectedAt)} ago</td>
                     <td>
-                      <button className="btn btn--sm btn--ghost" onClick={() => socket.emit('admin:kick', { playerId: c.id }, () => {})}>
+                      <button className="btn btn--sm btn--ghost" onClick={() => socket.emit('admin:kick', { playerId: c.id }, act)}>
                         Kick
                       </button>
                     </td>
@@ -189,7 +209,7 @@ export function AdminScreen() {
             <div className="row">
               <button
                 className="btn btn--danger grow"
-                onClick={() => { socket.emit('admin:reset', () => {}); setConfirming(false); }}
+                onClick={() => { socket.emit('admin:reset', act); setConfirming(false); }}
               >
                 Yes, reset
               </button>

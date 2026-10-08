@@ -57,6 +57,8 @@ export interface LobbyState {
   online: number;
   players: LobbyPlayer[];
   rooms: LobbyRoomSummary[];
+  /** Server clock (epoch ms) when this was sent — clients sync their countdowns to it. */
+  serverNow: number;
 }
 
 export interface Invite {
@@ -118,6 +120,8 @@ export interface RoomView {
   /** Increments on every rematch — the client uses it to reset its draft. */
   round: number;
   moveLog: MoveLogEntry[];
+  /** Server clock (epoch ms) when this was sent. */
+  serverNow: number;
 }
 
 export interface MoveLogEntry {
@@ -164,4 +168,6 @@ export interface AdminState {
   serverStartedAt: number;
   matchesPlayed: number;
   host: { port: number; addresses: string[] };
+  /** Server clock (epoch ms) when this was sent. */
+  serverNow: number;
 }

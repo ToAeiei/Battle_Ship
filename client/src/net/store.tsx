@@ -7,6 +7,7 @@ import type {
 } from '@battleship/shared';
 import { socket } from './socket.js';
 import { sfx } from '../lib/sfx.js';
+import { syncClock } from '../lib/clock.js';
 
 /**
  * The seat (token + the nickname bound to it) lives in sessionStorage, so two
@@ -56,7 +57,7 @@ export const useGame = () => {
   return v;
 };
 
-const EMPTY_LOBBY: LobbyState = { online: 0, players: [], rooms: [] };
+const EMPTY_LOBBY: LobbyState = { online: 0, players: [], rooms: [], serverNow: 0 };
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(socket.connected);
@@ -105,11 +106,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     };
     const onDisconnect = () => setConnected(false);
 
-    const onLobby = (s: LobbyState) => setLobby(s);
+    const onLobby = (s: LobbyState) => { syncClock(s.serverNow); setLobby(s); };
     const onInvite = (i: Invite) => { setInvite(i); sfx.invite(); };
     const onInviteResult = ({ fromNickname, accepted }: { fromNickname: string; accepted: boolean }) =>
       toast(accepted ? 'success' : 'warn', accepted ? `${fromNickname} accepted!` : `${fromNickname} declined.`);
-    const onRoom = (v: RoomView) => setRoom(v);
+    const onRoom = (v: RoomView) => { syncClock(v.serverNow); setRoom(v); };
     const onClosed = ({ reason }: { reason: string }) => {
       setRoom(null); setChat([]); setHint(null);
       prevPhase.current = null; prevShot.current = ''; prevTurn.current = null;

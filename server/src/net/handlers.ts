@@ -1,6 +1,10 @@
 import { fail, ok } from '@battleship/shared';
-import type { Ship } from '@battleship/shared';
+import type { BotDifficulty, Ship } from '@battleship/shared';
 import type { GameServer, IO, Sock } from '../core/GameServer.js';
+import type { Player } from '../core/Player.js';
+
+type Result = { ok: true; data?: unknown } | { ok: false; error: string };
+type AnyAck = (r: Result) => void;
 
 /**
  * Thin translation layer: socket event in -> GameServer method -> ack out.
@@ -8,78 +12,90 @@ import type { GameServer, IO, Sock } from '../core/GameServer.js';
  */
 export function registerHandlers(io: IO, game: GameServer) {
   io.on('connection', (socket: Sock) => {
-    /** Resolve the player behind this socket, or reject the call. */
-    const me = () => game.playerBySocket(socket.id);
-    const withPlayer = <A extends unknown[]>(
-      fn: (player: NonNullable<ReturnType<typeof me>>, ...args: A) => { ok: true } | { ok: false; error: string }
-    ) => (...args: [...A, (r: { ok: true } | { ok: false; error: string }) => void]) => {
-      const ack = args.pop() as (r: { ok: true } | { ok: false; error: string }) => void;
-      const player = me();
-      if (!player) return ack?.(fail('Join with a nickname first.'));
-      ack?.(fn(player, ...(args as unknown as A)));
+    /**
+     * Never trust the wire: a missing payload, a missing ack or a wrong field
+     * type must come back as an error, not take the whole server down.
+     */
+    const on = <P = Record<string, never>>(event: string, fn: (payload: P) => Result) => {
+      (socket as any).on(event, (...args: unknown[]) => {
+        const last = args[args.length - 1];
+        const ack: AnyAck = typeof last === 'function' ? (last as AnyAck) : () => {};
+        const payload = (args[0] && typeof args[0] === 'object' ? args[0] : {}) as P;
+        try {
+          ack(fn(payload));
+        } catch {
+          ack(fail('Bad request.'));
+        }
+      });
     };
 
+    /** Same, but resolves the player behind this socket first. */
+    const onPlayer = <P = Record<string, never>>(event: string, fn: (player: Player, payload: P) => Result) =>
+      on<P>(event, (payload) => {
+        const player = game.playerBySocket(socket.id);
+        return player ? fn(player, payload) : fail('Join with a nickname first.');
+      });
+
+    /** Dashboard actions need a socket that passed `admin:watch`. */
+    const onAdmin = <P = Record<string, never>>(event: string, fn: (payload: P) => Result) =>
+      on<P>(event, (payload) =>
+        game.isAdmin(socket.id) ? fn(payload) : fail('Unlock the server dashboard first.'));
+
     /* --- session ---------------------------------------------------- */
-    socket.on('session:join', ({ nickname, token }, ack) => {
-      const player = game.joinSession(socket, nickname, token);
+    on<{ nickname: string; token?: string }>('session:join', ({ nickname, token }) => {
+      const player = game.joinSession(socket, nickname, typeof token === 'string' ? token : undefined);
       socket.emit('lobby:state', game.lobbyState());
-      ack(ok({
+      return ok({
         playerId: player.id,
         nickname: player.nickname,
         token: player.token,
         score: player.score,
-      }));
+      });
     });
 
     /* --- lobby ------------------------------------------------------ */
-    socket.on('lobby:challenge', withPlayer((p, { targetId }: { targetId: string }) =>
-      game.challenge(p, targetId)));
+    onPlayer<{ targetId: string }>('lobby:challenge', (p, { targetId }) => game.challenge(p, targetId));
 
-    socket.on('lobby:respond', withPlayer((p, { fromId, accept }: { fromId: string; accept: boolean }) =>
-      game.respondToChallenge(p, fromId, accept)));
+    onPlayer<{ fromId: string; accept: boolean }>('lobby:respond', (p, { fromId, accept }) =>
+      game.respondToChallenge(p, fromId, accept === true));
 
-    socket.on('lobby:queue', withPlayer((p, { join }: { join: boolean }) =>
-      game.setQueued(p, join)));
+    onPlayer<{ join: boolean }>('lobby:queue', (p, { join }) => game.setQueued(p, join === true));
 
-    socket.on('lobby:playBot', withPlayer((p, { difficulty }: { difficulty: 'easy' | 'normal' | 'admiral' }) =>
-      game.playBot(p, difficulty)));
+    onPlayer<{ difficulty: BotDifficulty }>('lobby:playBot', (p, { difficulty }) =>
+      game.playBot(p, difficulty));
 
-    socket.on('lobby:spectate', withPlayer((p, { roomId }: { roomId: string }) =>
-      game.spectate(p, roomId)));
+    onPlayer<{ roomId: string }>('lobby:spectate', (p, { roomId }) => game.spectate(p, roomId));
 
     /* --- room ------------------------------------------------------- */
-    socket.on('room:leave', withPlayer((p) => game.leaveRoom(p)));
+    onPlayer('room:leave', (p) => game.leaveRoom(p));
 
-    socket.on('room:placeFleet', withPlayer((p, { ships }: { ships: Ship[] }) => {
+    onPlayer<{ ships: Ship[] }>('room:placeFleet', (p, { ships }) => {
       const room = game.roomOf(p.id);
       return room ? room.placeFleet(p.id, ships) : fail('You are not in a match.');
-    }));
+    });
 
-    socket.on('room:fire', withPlayer((p, { cell }: { cell: number }) => {
+    onPlayer<{ cell: number }>('room:fire', (p, { cell }) => {
       const room = game.roomOf(p.id);
       return room ? room.fire(p.id, cell) : fail('You are not in a match.');
-    }));
+    });
 
-    socket.on('room:rematch', withPlayer((p, { agree }: { agree: boolean }) => {
+    onPlayer<{ agree: boolean }>('room:rematch', (p, { agree }) => {
       const room = game.roomOf(p.id);
-      return room ? room.rematch(p.id, agree) : fail('You are not in a match.');
-    }));
+      return room ? room.rematch(p.id, agree === true) : fail('You are not in a match.');
+    });
 
-    socket.on('room:chat', withPlayer((p, { text, kind }: { text: string; kind?: 'chat' | 'emote' }) =>
-      game.chat(p, text, kind ?? 'chat')));
+    onPlayer<{ text: string; kind?: 'chat' | 'emote' }>('room:chat', (p, { text, kind }) =>
+      game.chat(p, text, kind === 'emote' ? 'emote' : 'chat'));
 
-    socket.on('room:hint', (ack) => {
-      const player = me();
-      if (!player) return ack(fail('Join with a nickname first.'));
-      const room = game.roomOf(player.id);
-      if (!room) return ack(fail('You are not in a match.'));
-      ack(room.hint(player.id));
+    onPlayer('room:hint', (p) => {
+      const room = game.roomOf(p.id);
+      return room ? room.hint(p.id) : fail('You are not in a match.');
     });
 
     /* --- server dashboard ------------------------------------------- */
-    socket.on('admin:watch', ({ key }, ack) => ack(game.watchAdmin(socket, key)));
-    socket.on('admin:reset', (ack) => ack(game.reset()));
-    socket.on('admin:kick', ({ playerId }, ack) => ack(game.kick(playerId)));
+    on<{ key: string }>('admin:watch', ({ key }) => game.watchAdmin(socket, key));
+    onAdmin('admin:reset', () => game.reset());
+    onAdmin<{ playerId: string }>('admin:kick', ({ playerId }) => game.kick(playerId));
 
     socket.on('disconnect', () => game.handleDisconnect(socket.id));
   });
